@@ -1,0 +1,51 @@
+name: Generate Daily History Fact PDF
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 5 * * *'
+
+jobs:
+  build-pdf:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright
+          python -m playwright install chromium
+
+      - name: Run generator
+        run: python daily_historyfact.py
+
+      - name: Recreate rmapi config
+        run: |
+          mkdir -p "$HOME/.config/rmapi"
+          cat > "$HOME/.config/rmapi/rmapi.conf" <<'EOF'
+          ${{ secrets.RMAPI_CONFIG }}
+          EOF
+          chmod 600 "$HOME/.config/rmapi/rmapi.conf"
+
+      - name: Install rmapi
+        run: |
+          curl -L -o /tmp/rmapi.tar.gz \
+            "https://github.com/ddvk/rmapi/releases/download/v0.0.32/rmapi-linux-amd64.tar.gz"
+          tar xzf /tmp/rmapi.tar.gz -C /tmp
+          sudo mv /tmp/rmapi /usr/local/bin/rmapi
+      
+      - name: Upload pdf to reMarkable
+        env:
+          RMAPI_FORCE_SCHEMA_VERSION: 4
+        run: |
+          rmapi put --force daily_historyfact.pdf /
