@@ -147,7 +147,96 @@ with sync_playwright() as p:
             break-before: page !important;
             page-break-before: always !important;
         }
+
+        /* Keep the featured (cover) image on the first page with the title */
+        .ft-post-conyent-left .single-featured-image,
+        .ft-post-conyent-left .single-featured-image img {
+            break-before: auto !important;
+            page-break-before: auto !important;
+        }
+
+        /* Cover page: big centered title, tall image, author/date, then break */
+        .ft-post-conyent-left h1.entry-title {
+            text-align: center !important;
+            font-size: 49px !important;
+            line-height: 1.05 !important;
+            margin: 0 0 24px 0 !important;
+        }
+
+        .ft-post-conyent-left .single-featured-image {
+            margin: 0 !important;
+        }
+
+        .ft-post-conyent-left .single-featured-image img {
+            width: 100% !important;
+            max-width: 100% !important;
+            height: 375px !important;
+            object-fit: cover !important;
+        }
+
+        /* Image description overlaid on the bottom-right corner of the image */
+        .ft-post-conyent-left .single-featured-image {
+            position: relative !important;
+        }
+
+        .ft-post-conyent-left .single-featured-image figcaption {
+            position: absolute !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            margin: 0 !important;
+            padding: 3px 8px !important;
+            background: rgba(255, 255, 255, 0.85) !important;
+            color: #555 !important;
+            font-style: normal !important;
+            font-size: 10px !important;
+            line-height: 1.3 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.15em !important;
+        }
+
+        .ft-post-conyent-left .author-info {
+            margin-top: 48px !important;
+            break-after: page !important;
+            page-break-after: always !important;
+        }
     """)
+
+    # Wait for web fonts, otherwise the PDF can fall back to a wider font
+    # (ads can keep the page from ever finishing loading, so don't fail on that)
+    try:
+        page.wait_for_load_state("load", timeout=15000)
+    except Exception:
+        pass
+    page.evaluate("document.fonts.ready.then(() => true)")
+
+    # Lay out at the printed content width so measurements match the PDF,
+    # then shrink the cover image so title + image + author fit on page 1
+    page.emulate_media(media="print")
+    page.set_viewport_size({"width": 443, "height": 699})
+    page.evaluate("""() => {
+        const PAGE_H = 699;  // (8.28in - 0.4in - 0.6in) * 96px
+        const img = document.querySelector('.ft-post-conyent-left .single-featured-image img');
+        const author = document.querySelector('.ft-post-conyent-left .author-info');
+        if (!img || !author) return;
+
+        // Show the image description instead of the photo credit, in the
+        // same font as the author name
+        const caption = img.closest('figure').querySelector('figcaption');
+        if (caption) {
+            if (img.alt) {
+                caption.textContent = img.alt;
+                const name = document.querySelector('.author-info__name');
+                if (name) caption.style.fontFamily = getComputedStyle(name).fontFamily;
+            } else {
+                caption.remove();
+            }
+        }
+
+        const imgTop = img.getBoundingClientRect().top + window.scrollY;
+        const below = author.getBoundingClientRect().bottom - img.getBoundingClientRect().bottom;
+        const h = Math.max(200, Math.min(375, PAGE_H - imgTop - below - 10));
+        img.style.setProperty('height', h + 'px', 'important');
+    }""")
 
     page.pdf(
         path="daily_historyfact.pdf",
