@@ -3,7 +3,7 @@ name: Generate Daily History Fact PDF
 on:
   workflow_dispatch:
   schedule:
-    - cron: '32 01 * * *'
+    - cron: '32 00 * * *'
 
 jobs:
   build-pdf:
